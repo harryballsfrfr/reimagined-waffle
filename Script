@@ -1,0 +1,170 @@
+-- Load Orion Library
+local OrionLib = loadstring(game:HttpGet("https://raw.githubusercontent.com/jensonhirst/Orion/main/source"))()
+ 
+-- Services
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+ 
+-- Create Window
+local Window = OrionLib:MakeWindow({
+    Name = "Ultimate Utility Hub",
+    HidePremium = false,
+    SaveConfig = false,
+    ConfigFolder = "UtilHub"
+})
+ 
+-- Create Tab
+local MainTab = Window:MakeTab({
+    Name = "Main",
+    Icon = "rbxassetid://4483345998",
+    PremiumOnly = false
+})
+ 
+-- Variables
+local Humanoid
+local RootPart
+local SavedWalkSpeed = 16
+local SpawnPosition = nil
+local InfiniteJump = false
+ 
+-- Update Character References and Spawn Position
+local function UpdateCharacter()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    Humanoid = character:WaitForChild("Humanoid")
+    RootPart = character:WaitForChild("HumanoidRootPart")
+ 
+    if not SpawnPosition then
+        SpawnPosition = RootPart.Position
+    end
+ 
+    -- Restore saved walkspeed on spawn
+    Humanoid.WalkSpeed = SavedWalkSpeed
+end
+ 
+-- Initial update
+UpdateCharacter()
+ 
+-- Update on respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    wait(1)
+    UpdateCharacter()
+end)
+ 
+-- WalkSpeed Slider
+MainTab:AddSlider({
+    Name = "WalkSpeed",
+    Min = 16,
+    Max = 100,
+    Default = 16,
+    Increment = 1,
+    ValueName = "Speed",
+    Callback = function(value)
+        SavedWalkSpeed = value
+        if Humanoid then
+            Humanoid.WalkSpeed = value
+        end
+    end
+})
+ 
+-- Infinite Jump Toggle
+MainTab:AddToggle({
+    Name = "Infinite Jump",
+    Default = false,
+    Callback = function(value)
+        InfiniteJump = value
+    end
+})
+ 
+-- Infinite Jump Logic
+UserInputService.JumpRequest:Connect(function()
+    if InfiniteJump and RootPart then
+        RootPart.Velocity = Vector3.new(0, 50, 0)
+    end
+end)
+ 
+-- Steal Brainrot (Teleport to Spawn with Tween)
+MainTab:AddButton({
+    Name = "Steal Brainrot",
+    Callback = function()
+        if RootPart and SpawnPosition then
+            local goal = {CFrame = CFrame.new(SpawnPosition + Vector3.new(0, 5, 0))}
+            local tweenInfo = TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            local tween = TweenService:Create(RootPart, tweenInfo, goal)
+            tween:Play()
+        end
+    end
+})
+ 
+-- Fix Ragdoll Button
+MainTab:AddButton({
+    Name = "Fix Ragdoll / Reset Body",
+    Callback = function()
+        local char = LocalPlayer.Character
+        if not char then return end
+ 
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+ 
+        if hrp and humanoid then
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            humanoid.PlatformStand = false
+            humanoid.Sit = false
+ 
+            -- Slight lift to prevent stuck issues
+            hrp.CFrame = hrp.CFrame + Vector3.new(0, 5, 0)
+        end
+    end
+})
+ 
+-- Server Hop Button
+MainTab:AddButton({
+    Name = "Server Hop",
+    Callback = function()
+        local PlaceID = game.PlaceId
+        local currentJobId = game.JobId
+ 
+        local success, servers = pcall(function()
+            return HttpService:JSONDecode(game:HttpGet(
+                ("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100"):format(PlaceID)
+            ))
+        end)
+ 
+        if success and servers and servers.data then
+            local serverList = servers.data
+            local foundServer
+ 
+            for _, server in ipairs(serverList) do
+                if server.playing < server.maxPlayers and server.id ~= currentJobId then
+                    foundServer = server.id
+                    break
+                end
+            end
+ 
+            if foundServer then
+                TeleportService:TeleportToPlaceInstance(PlaceID, foundServer, LocalPlayer)
+            else
+                OrionLib:MakeNotification({
+                    Name = "Server Hop",
+                    Content = "No available servers found to hop to.",
+                    Image = "rbxassetid://4483345998",
+                    Time = 5
+                })
+            end
+        else
+            OrionLib:MakeNotification({
+                Name = "Server Hop",
+                Content = "Failed to fetch servers.",
+                Image = "rbxassetid://4483345998",
+                Time = 5
+            })
+        end
+    end
+})
+ 
+-- Init UI
+OrionLib:Init()
+ 
